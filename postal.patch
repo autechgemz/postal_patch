@@ -1,0 +1,176 @@
+diff --git a/Makefile.in b/Makefile.in
+index 4b4e55f..cb4cef9 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -8,7 +8,7 @@ all: $(EXE) $(SEXE)
+ prefix=@prefix@
+ eprefix=@exec_prefix@
+ WFLAGS=-Wall -W -Wshadow -Wpointer-arith -Wcast-align -Wwrite-strings -Wcast-qual -pedantic
+-WPLUS=-Woverloaded-virtual -ffor-scope
++WPLUS=-Woverloaded-virtual
+ 
+ CXX=@CXX@ $(CFLAGS) -O2 -g $(WFLAGS) $(WPLUS)
+ CC=@CC@ $(CFLAGS) -O2 -g $(WFLAGS)
+diff --git a/basictcp.cpp b/basictcp.cpp
+index b40252a..b3e1d66 100644
+--- a/basictcp.cpp
++++ b/basictcp.cpp
+@@ -102,10 +102,10 @@ int base_tcp::ConnectTLS()
+   m_sslMeth = NULL;
+   m_sslCtx = NULL;
+   m_ssl = NULL;
+-  m_sslMeth = SSLv2_client_method();
++  m_sslMeth = SSLv23_client_method();
+   if(m_sslMeth == NULL)
+   {
+-    fprintf(stderr, "Can't get SSLv2_client_method.\n");
++    fprintf(stderr, "Can't get SSLv23_client_method.\n");
+     return 2;
+   }
+   m_sslCtx = SSL_CTX_new(m_sslMeth);
+diff --git a/basictcp.h b/basictcp.h
+index 047a79d..94bdab4 100644
+--- a/basictcp.h
++++ b/basictcp.h
+@@ -89,7 +89,7 @@ private:
+ 
+ #ifdef USE_SSL
+ #ifdef USE_OPENSSL
+-  SSL_METHOD *m_sslMeth;
++  const SSL_METHOD *m_sslMeth;
+   SSL_CTX* m_sslCtx;
+   SSL *m_ssl;
+ #else
+diff --git a/bhm.cpp b/bhm.cpp
+index 6dee202..f643783 100644
+--- a/bhm.cpp
++++ b/bhm.cpp
+@@ -50,7 +50,7 @@ void usage(CPCCHAR msg = NULL)
+ 
+ int maxMsgSize = 10240;
+ results res;
+-Logit *log;
++Logit *logit;
+ 
+ int exitCount = 0;
+ 
+@@ -72,7 +72,7 @@ typedef struct
+ 
+ enum { eFree = 0, eUsed, eFinished };
+ 
+-int check_sender(CPCCHAR addr)
++int check_sender([[maybe_unused]] CPCCHAR addr)
+ {
+   return 0;
+ }
+@@ -264,7 +264,7 @@ int readCommand(base_tcp &t, char *buf, int bufSize, bool stripCR, int timeout)
+ 
+ void do_work(thread_data *td)
+ {
+-  base_tcp t(td->fd, log, td->debug, &res
++  base_tcp t(td->fd, logit, td->debug, &res
+ #ifdef USE_SSL
+     , td->ssl
+ #endif
+@@ -373,6 +373,7 @@ int main(int argc, char **argv)
+       break;
+       case 'Z':
+         debugMultipleFiles = true;
++        [[fallthrough]];
+       case 'z':
+         debugName = optarg;
+       break;
+@@ -414,7 +415,7 @@ int main(int argc, char **argv)
+ #endif
+     "\n");
+ 
+-  log = new Logit("bhm.log", allLog, false, 0);
++  logit = new Logit("bhm.log", allLog, false, 0);
+   Logit *debug = NULL;
+ 
+   if(debugName)
+diff --git a/client.cpp b/client.cpp
+index b867658..6a211b1 100644
+--- a/client.cpp
++++ b/client.cpp
+@@ -484,7 +484,7 @@ ERROR_TYPE client::sendCommandString(const string &s, bool important)
+   if(m_isIMAP)
+   {
+     m_imapID++;
+-    sprintf(m_imapIDtxt, "%d ", m_imapID);
++    snprintf(m_imapIDtxt, sizeof(m_imapIDtxt), "%.8d ", m_imapID);
+     string command(m_imapIDtxt);
+     command += s;
+     return sendCommandData(command.c_str(), command.size(), important);
+diff --git a/client.h b/client.h
+index 97b7d76..0924855 100644
+--- a/client.h
++++ b/client.h
+@@ -56,7 +56,7 @@ private:
+   int m_useIMAP;
+   bool m_isIMAP;
+   int m_imapID;
+-  char m_imapIDtxt[9];
++  char m_imapIDtxt[16];
+   TRISTATE m_qmail_pop;
+   int m_downloadPercent, m_deletePercent;
+ 
+diff --git a/expand.cpp b/expand.cpp
+index 820d16c..9229069 100644
+--- a/expand.cpp
++++ b/expand.cpp
+@@ -84,8 +84,8 @@ NamePattern::NamePattern(const char *match, const char *replace)
+         pos++;
+         buf_pos = 0;
+         paren = false;
+-        break;
+       } // if escape then fall-through
++      [[fallthrough]];
+     case '-':
+       if(!paren)
+       {
+diff --git a/postal.cpp b/postal.cpp
+index 62a116c..d576144 100644
+--- a/postal.cpp
++++ b/postal.cpp
+@@ -126,6 +126,10 @@ int main(int argc, char **argv)
+       break;
+       case 'Z':
+         debugMultipleFiles = true;
++        [[fallthrough]];
++      case 'x':
++        debugMultipleFiles = true;
++        __attribute__((fallthrough));
+       case 'z':
+         debugName = optarg;
+       break;
+diff --git a/tcp.cpp b/tcp.cpp
+index d07496e..6b0160f 100644
+--- a/tcp.cpp
++++ b/tcp.cpp
+@@ -178,10 +178,10 @@ int tcp::ConnectTLS()
+ #ifdef USE_OPENSSL
+   m_sslCtx = NULL;
+   m_ssl = NULL;
+-  m_sslMeth = SSLv2_client_method();
++  m_sslMeth = SSLv23_client_method();
+   if(m_sslMeth == NULL)
+   {
+-    fprintf(stderr, "Can't get SSLv2_client_method.\n");
++    fprintf(stderr, "Can't get SSLv23_client_method.\n");
+     error();
+     return 2;
+   }
+diff --git a/tcp.h b/tcp.h
+index 89c6144..0f54635 100644
+--- a/tcp.h
++++ b/tcp.h
+@@ -100,7 +100,7 @@ private:
+ 
+ #ifdef USE_SSL
+ #ifdef USE_OPENSSL
+-  SSL_METHOD *m_sslMeth;
++  const SSL_METHOD *m_sslMeth;
+   SSL_CTX* m_sslCtx;
+   SSL *m_ssl;
+ #else
